@@ -130,7 +130,7 @@ export default function SearchScreen() {
             {
               backgroundColor: colors.card,
               borderColor: colors.border,
-              shadowColor: isDark ? "#000" : "#1B2B6B",
+              shadowColor: isDark ? "#000" : "#F97316",
             },
           ]}
         >

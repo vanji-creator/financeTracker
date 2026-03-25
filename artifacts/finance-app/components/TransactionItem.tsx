@@ -21,7 +21,7 @@ const CATEGORY_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
   Entertainment: "tv",
   Travel: "map",
   Salary: "briefcase",
-  Freelance: "laptop",
+  Freelance: "monitor",
   Investment: "trending-up",
   Other: "tag",
 };

@@ -7,7 +7,7 @@ import {
   RefreshControl,
   Platform,
   ActivityIndicator,
-  Pressable
+  Pressable,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -23,7 +23,6 @@ import {
   useGetTransactions,
   useCreateTransaction,
   useDeleteTransaction,
-  Transaction
 } from "@workspace/api-client-react";
 
 const SEED_FLAG = "@finance_app_seeded_v1";
@@ -43,6 +42,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme() ?? "light";
   const colors = Colors[colorScheme];
+  const isDark = colorScheme === "dark";
   const [refreshing, setRefreshing] = useState(false);
 
   const { data: summary, refetch: refetchSummary, isLoading: summaryLoading } = useGetSummary({});
@@ -81,47 +81,47 @@ export default function HomeScreen() {
     refetchTransactions();
   };
 
-  const currentMonth = new Date().toLocaleString('en-US', { month: 'long' });
+  const currentMonth = new Date().toLocaleString("en-US", { month: "long" });
 
-  const renderSkeleton = () => (
-    <View style={styles.skeletonContainer}>
-      <ActivityIndicator size="large" color={colors.primary} />
-    </View>
-  );
+  const gradientColors: [string, string] = isDark
+    ? [colors.primary, "#C2410C"]
+    : [colors.primary, "#EA580C"];
 
   return (
-    <ScrollView
-      style={[styles.container, { backgroundColor: colors.background }]}
-      contentContainerStyle={[
-        styles.contentContainer,
+    <View
+      style={[
+        styles.root,
         {
+          backgroundColor: colors.background,
           paddingTop: Platform.OS === "web" ? 67 : insets.top + 20,
-          paddingBottom: insets.bottom + 100, // For bottom tabs
-        }
+        },
       ]}
-      contentInsetAdjustmentBehavior="automatic"
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
-      }
     >
-      <View style={styles.header}>
-        <View>
-          <Text style={[styles.greeting, { color: colors.textSecondary }]}>Good morning</Text>
-          <Text style={[styles.title, { color: colors.text }]}>Dashboard</Text>
+      {/* ── Fixed top section ── */}
+      <View style={styles.fixedTop}>
+        {/* Header */}
+        <View style={[styles.header, { paddingHorizontal: 20 }]}>
+          <View>
+            <Text style={[styles.greeting, { color: colors.textSecondary }]}>Good morning</Text>
+            <Text style={[styles.title, { color: colors.text }]}>Dashboard</Text>
+          </View>
+          <Pressable
+            onPress={() => router.push("/profile")}
+            style={[styles.avatarButton, { backgroundColor: colors.card, borderColor: colors.border }]}
+          >
+            <Feather name="user" size={24} color={colors.text} />
+          </Pressable>
         </View>
-        <Pressable 
-          onPress={() => router.push("/profile")}
-          style={[styles.avatarButton, { backgroundColor: colors.card, borderColor: colors.border }]}
-        >
-          <Feather name="user" size={24} color={colors.text} />
-        </Pressable>
-      </View>
 
-      {summaryLoading ? renderSkeleton() : (
-        <>
+        {/* Balance card */}
+        {summaryLoading ? (
+          <View style={styles.skeletonCard}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+        ) : (
           <LinearGradient
-            colors={[colors.primary, colorScheme === 'dark' ? '#1A2965' : '#2D45A0']}
-            style={styles.balanceCard}
+            colors={gradientColors}
+            style={[styles.balanceCard, { marginHorizontal: 20 }]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
           >
@@ -131,10 +131,13 @@ export default function HomeScreen() {
             </Text>
             <Text style={styles.balanceMonth}>{currentMonth} Overview</Text>
           </LinearGradient>
+        )}
 
-          <View style={styles.summaryRow}>
+        {/* Income / Expense row */}
+        {!summaryLoading && (
+          <View style={[styles.summaryRow, { paddingHorizontal: 20 }]}>
             <View style={[styles.summaryBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={[styles.summaryIcon, { backgroundColor: colors.income + '20' }]}>
+              <View style={[styles.summaryIcon, { backgroundColor: colors.income + "25" }]}>
                 <Feather name="arrow-down-left" size={20} color={colors.income} />
               </View>
               <View>
@@ -146,7 +149,7 @@ export default function HomeScreen() {
             </View>
 
             <View style={[styles.summaryBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={[styles.summaryIcon, { backgroundColor: colors.expense + '20' }]}>
+              <View style={[styles.summaryIcon, { backgroundColor: colors.expense + "25" }]}>
                 <Feather name="arrow-up-right" size={20} color={colors.expense} />
               </View>
               <View>
@@ -157,158 +160,203 @@ export default function HomeScreen() {
               </View>
             </View>
           </View>
-        </>
-      )}
-
-      <View style={styles.sectionHeader}>
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Recent Transactions</Text>
-        <Pressable onPress={() => router.push("/search")}>
-          <Text style={[styles.seeAll, { color: colors.accent }]}>Search</Text>
-        </Pressable>
-      </View>
-
-      <View style={[styles.transactionsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        {transactionsLoading ? renderSkeleton() : transactions?.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Feather name="inbox" size={48} color={colors.textSecondary} style={{ marginBottom: 16 }} />
-            <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>
-              No transactions yet. Add one to get started!
-            </Text>
-          </View>
-        ) : (
-          transactions?.slice(0, 10).map((tx) => (
-            <TransactionItem
-              key={tx.id}
-              transaction={tx}
-              onDelete={handleDelete}
-            />
-          ))
         )}
+
+        {/* Section header */}
+        <View style={[styles.sectionHeader, { paddingHorizontal: 20 }]}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Recent Transactions</Text>
+          <Pressable onPress={() => router.push("/search")}>
+            <Text style={[styles.seeAll, { color: colors.accent }]}>Search</Text>
+          </Pressable>
+        </View>
       </View>
-    </ScrollView>
+
+      {/* ── Scrollable transactions ── */}
+      <ScrollView
+        style={styles.txScroll}
+        contentContainerStyle={[
+          styles.txScrollContent,
+          { paddingBottom: insets.bottom + 100 },
+        ]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+          />
+        }
+      >
+        <View
+          style={[
+            styles.transactionsCard,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              marginHorizontal: 20,
+            },
+          ]}
+        >
+          {transactionsLoading ? (
+            <View style={styles.skeletonContainer}>
+              <ActivityIndicator size="large" color={colors.primary} />
+            </View>
+          ) : transactions?.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Feather name="inbox" size={48} color={colors.textSecondary} style={{ marginBottom: 16 }} />
+              <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>
+                No transactions yet. Add one to get started!
+              </Text>
+            </View>
+          ) : (
+            transactions?.map((tx) => (
+              <TransactionItem
+                key={tx.id}
+                transaction={tx}
+                onDelete={handleDelete}
+              />
+            ))
+          )}
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
   },
-  contentContainer: {
-    paddingHorizontal: 20,
-  },
-  skeletonContainer: {
-    padding: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
+  fixedTop: {
+    // No flex — sizes to content
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 24,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 20,
   },
   greeting: {
     fontSize: 16,
-    fontFamily: 'Inter_400Regular',
+    fontFamily: "Inter_400Regular",
     marginBottom: 4,
   },
   title: {
     fontSize: 28,
-    fontFamily: 'Inter_700Bold',
+    fontFamily: "Inter_700Bold",
   },
   avatarButton: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
+  },
+  skeletonCard: {
+    height: 130,
+    marginHorizontal: 20,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 16,
   },
   balanceCard: {
     borderRadius: 24,
     padding: 24,
-    marginBottom: 20,
-    shadowColor: "#000",
+    marginBottom: 16,
+    shadowColor: "#F97316",
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 10,
   },
   balanceLabel: {
-    color: 'rgba(255,255,255,0.8)',
-    fontSize: 16,
-    fontFamily: 'Inter_500Medium',
+    color: "rgba(255,255,255,0.85)",
+    fontSize: 15,
+    fontFamily: "Inter_500Medium",
     marginBottom: 8,
   },
   balanceAmount: {
-    color: '#FFF',
+    color: "#FFF",
     fontSize: 40,
-    fontFamily: 'Inter_700Bold',
-    marginBottom: 16,
+    fontFamily: "Inter_700Bold",
+    marginBottom: 14,
   },
   balanceMonth: {
-    color: 'rgba(255,255,255,0.9)',
-    fontSize: 14,
-    fontFamily: 'Inter_500Medium',
+    color: "rgba(255,255,255,0.9)",
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
   },
   summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 32,
-    gap: 16,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 24,
+    gap: 14,
   },
   summaryBox: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    borderRadius: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 14,
+    borderRadius: 18,
     borderWidth: 1,
   },
   summaryIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 10,
   },
   summaryBoxLabel: {
-    fontSize: 14,
-    fontFamily: 'Inter_500Medium',
-    marginBottom: 4,
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+    marginBottom: 3,
   },
   summaryBoxAmount: {
-    fontSize: 18,
-    fontFamily: 'Inter_700Bold',
+    fontSize: 16,
+    fontFamily: "Inter_700Bold",
   },
   sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
   },
   sectionTitle: {
     fontSize: 20,
-    fontFamily: 'Inter_600SemiBold',
+    fontFamily: "Inter_600SemiBold",
   },
   seeAll: {
-    fontSize: 16,
-    fontFamily: 'Inter_500Medium',
+    fontSize: 15,
+    fontFamily: "Inter_500Medium",
+  },
+  txScroll: {
+    flex: 1,
+  },
+  txScrollContent: {
+    // paddingBottom set dynamically
   },
   transactionsCard: {
     borderRadius: 24,
     borderWidth: 1,
-    overflow: 'hidden',
+    overflow: "hidden",
+  },
+  skeletonContainer: {
+    padding: 40,
+    alignItems: "center",
+    justifyContent: "center",
   },
   emptyState: {
     padding: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   emptyStateText: {
-    fontSize: 16,
-    fontFamily: 'Inter_500Medium',
-    textAlign: 'center',
-  }
+    fontSize: 15,
+    fontFamily: "Inter_500Medium",
+    textAlign: "center",
+  },
 });
