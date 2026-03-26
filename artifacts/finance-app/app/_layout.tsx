@@ -7,26 +7,65 @@ import {
 } from "@expo-google-fonts/inter";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect, useState, createContext, useContext } from "react";
-import { Text, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { Platform, Text, View, ActivityIndicator } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { db } from "@/db";
-import { initializeFTS } from "@/db";
-import { useMigrations } from "drizzle-orm/expo-sqlite/migrator";
-import migrations from "../drizzle/migrations";
+import { openDatabase, initializeFTS } from "@/db";
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
-// Database ready context
-const DatabaseReadyContext = createContext(false);
-export function useDatabaseReady() {
-  return useContext(DatabaseReadyContext);
-}
+// Schema CREATE TABLE statements — idempotent IF NOT EXISTS.
+// Run directly via execAsync to avoid drizzle's sync dialect (needs SharedArrayBuffer).
+const MIGRATION_STATEMENTS = [
+  `CREATE TABLE IF NOT EXISTS \`ai_conversations\` (
+    \`id\` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+    \`title\` text NOT NULL,
+    \`created_at\` text NOT NULL,
+    \`updated_at\` text NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS \`ai_insights\` (
+    \`id\` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+    \`type\` text NOT NULL,
+    \`title\` text NOT NULL,
+    \`summary\` text NOT NULL,
+    \`data\` text,
+    \`period_start\` text,
+    \`period_end\` text,
+    \`is_read\` integer DEFAULT 0,
+    \`created_at\` text NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS \`ai_messages\` (
+    \`id\` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+    \`conversation_id\` integer NOT NULL,
+    \`role\` text NOT NULL,
+    \`content\` text NOT NULL,
+    \`metadata\` text,
+    \`created_at\` text NOT NULL,
+    FOREIGN KEY (\`conversation_id\`) REFERENCES \`ai_conversations\`(\`id\`) ON UPDATE no action ON DELETE cascade
+  )`,
+  `CREATE TABLE IF NOT EXISTS \`budgets\` (
+    \`id\` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+    \`category\` text NOT NULL,
+    \`monthly_limit\` real NOT NULL,
+    \`month\` integer NOT NULL,
+    \`year\` integer NOT NULL,
+    \`created_at\` text NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS \`transactions\` (
+    \`id\` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+    \`type\` text NOT NULL,
+    \`amount\` real NOT NULL,
+    \`description\` text NOT NULL,
+    \`category\` text NOT NULL,
+    \`note\` text,
+    \`date\` text NOT NULL,
+    \`created_at\` text NOT NULL
+  )`,
+];
 
 function RootLayoutNav() {
   return (
@@ -44,59 +83,65 @@ export default function RootLayout() {
     Inter_700Bold,
   });
 
-  const { success: migrationsSuccess, error: migrationsError } = useMigrations(db, migrations);
-  const [ftsReady, setFtsReady] = useState(false);
-
-  // Initialize FTS5 after migrations complete
-  useEffect(() => {
-    if (migrationsSuccess) {
-      initializeFTS()
-        .then(() => setFtsReady(true))
-        .catch((err) => {
-          console.error("FTS initialization failed:", err);
-          setFtsReady(true); // Continue without FTS if it fails
-        });
-    }
-  }, [migrationsSuccess]);
+  const [dbReady, setDbReady] = useState(false);
 
   useEffect(() => {
-    if ((fontsLoaded || fontError) && (migrationsSuccess || migrationsError)) {
-      SplashScreen.hideAsync();
-    }
-  }, [fontsLoaded, fontError, migrationsSuccess, migrationsError]);
+    (async () => {
+      try {
+        if (Platform.OS === "web") {
+          // On web, expo-sqlite requires OPFS/SharedArrayBuffer (COOP/COEP headers)
+          // which aren't available in the Replit preview proxy.
+          // All data access on web uses the localStorage-based hooks instead.
+          setDbReady(true);
+          return;
+        }
 
-  if (!fontsLoaded && !fontError) return null;
+        const { expo } = await openDatabase();
 
-  if (migrationsError) {
+        // Run schema creation via raw async API (avoids drizzle's sync dialect)
+        for (const stmt of MIGRATION_STATEMENTS) {
+          await expo.execAsync(stmt);
+        }
+
+        try {
+          await initializeFTS();
+        } catch (e) {
+          console.warn("FTS initialization skipped:", e);
+        }
+
+        setDbReady(true);
+      } catch (err: any) {
+        console.error("DB initialization error:", err);
+        setDbReady(true); // still render — hooks show empty state gracefully
+      }
+    })();
+  }, []);
+
+  const isReady = (fontsLoaded || !!fontError) && dbReady;
+
+  useEffect(() => {
+    if (isReady) SplashScreen.hideAsync();
+  }, [isReady]);
+
+  if (!isReady) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 20 }}>
-        <Text style={{ fontSize: 16, color: "red", textAlign: "center" }}>
-          Database migration error: {migrationsError.message}
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#FFFFFF" }}>
+        <ActivityIndicator size="large" color="#F97316" />
+        <Text style={{ marginTop: 16, fontSize: 14, color: "#7C6A5A", fontWeight: "500" }}>
+          Setting up database…
         </Text>
       </View>
     );
   }
 
-  if (!migrationsSuccess) {
-    return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <Text style={{ fontSize: 16, color: "#666" }}>Setting up database...</Text>
-      </View>
-    );
-  }
-
-  const dbReady = migrationsSuccess && ftsReady;
-
   return (
     <SafeAreaProvider>
       <ErrorBoundary>
-        <DatabaseReadyContext.Provider value={dbReady}>
-          <GestureHandlerRootView>
-            <KeyboardProvider>
-              <RootLayoutNav />
-            </KeyboardProvider>
-          </GestureHandlerRootView>
-        </DatabaseReadyContext.Provider>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <KeyboardProvider>
+            <RootLayoutNav />
+          </KeyboardProvider>
+        </GestureHandlerRootView>
       </ErrorBoundary>
     </SafeAreaProvider>
   );

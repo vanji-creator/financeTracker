@@ -1,339 +1,294 @@
 /**
- * Core database hooks for transaction CRUD, financial summary, and statistics.
- * Replaces the remote API client with local SQLite queries via Drizzle ORM.
+ * Web implementation of database hooks.
+ * Uses localStorage for persistence (no SQLite/WASM needed).
+ * Metro resolves this file on web; useDatabase.native.ts is used on iOS/Android.
  */
-import { useState, useEffect, useCallback } from "react";
-import { db } from "@/db";
-import { transactions, type Transaction, type InsertTransaction } from "@/db/schema";
-import { eq, and, gte, lt, desc, sql, asc } from "drizzle-orm";
+import { useState, useEffect, useCallback, useRef } from "react";
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export type Transaction = {
+  id: number;
+  type: "income" | "expense";
+  amount: number;
+  description: string;
+  category: string;
+  note: string | null;
+  date: string;
+  createdAt: string;
+};
+
+// ─── Storage helpers ──────────────────────────────────────────────────────────
+
+const STORAGE_KEY = "fintrack_transactions_v1";
+let _cache: Transaction[] | null = null;
+// Global listeners so any hook can trigger re-renders across instances
+const _listeners = new Set<() => void>();
+
+function notifyAll() {
+  _cache = null; // invalidate cache
+  _listeners.forEach((fn) => fn());
+}
+
+function loadAll(): Transaction[] {
+  if (_cache) return _cache;
+  try {
+    const raw = typeof localStorage !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
+    _cache = raw ? (JSON.parse(raw) as Transaction[]) : [];
+  } catch {
+    _cache = [];
+  }
+  return _cache;
+}
+
+function saveAll(txs: Transaction[]) {
+  _cache = txs;
+  try {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(txs));
+    }
+  } catch { }
+}
+
+let _nextId = -1;
+function getNextId(txs: Transaction[]): number {
+  if (_nextId < 0) {
+    _nextId = txs.reduce((max, t) => Math.max(max, t.id), 0) + 1;
+  }
+  return _nextId++;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function getMonthRange(month: number, year: number) {
-    const start = new Date(year, month - 1, 1).toISOString();
-    const end = new Date(year, month, 1).toISOString();
-    return { start, end };
+  const start = new Date(year, month - 1, 1).toISOString();
+  const end = new Date(year, month, 1).toISOString();
+  return { start, end };
 }
 
 const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-// ─── Transactions CRUD ───────────────────────────────────────────────────────
+// ─── useTransactions ──────────────────────────────────────────────────────────
 
 interface TransactionFilters {
-    month?: number;
-    year?: number;
-    category?: string;
-    type?: "income" | "expense";
-    limit?: number;
-    offset?: number;
+  month?: number;
+  year?: number;
+  category?: string;
+  type?: "income" | "expense";
+  limit?: number;
+  offset?: number;
 }
 
 export function useTransactions(filters: TransactionFilters = {}) {
-    const [data, setData] = useState<Transaction[]>([]);
-    const [total, setTotal] = useState(0);
-    const [isLoading, setIsLoading] = useState(true);
+  const [tick, setTick] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
 
-    const refresh = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            const conditions: ReturnType<typeof eq>[] = [];
+  useEffect(() => {
+    const fn = () => setTick((t) => t + 1);
+    _listeners.add(fn);
+    return () => { _listeners.delete(fn); };
+  }, []);
 
-            if (filters.month && filters.year) {
-                const { start, end } = getMonthRange(filters.month, filters.year);
-                conditions.push(gte(transactions.date, start) as any);
-                conditions.push(lt(transactions.date, end) as any);
-            }
-            if (filters.category) {
-                conditions.push(eq(transactions.category, filters.category));
-            }
-            if (filters.type) {
-                conditions.push(eq(transactions.type, filters.type));
-            }
+  const all = loadAll();
+  let result = all.slice();
 
-            const where = conditions.length > 0 ? and(...conditions) : undefined;
+  if (filters.month && filters.year) {
+    const { start, end } = getMonthRange(filters.month, filters.year);
+    result = result.filter((t) => t.date >= start && t.date < end);
+  }
+  if (filters.category) result = result.filter((t) => t.category === filters.category);
+  if (filters.type) result = result.filter((t) => t.type === filters.type);
 
-            // Get total count
-            const [countResult] = await db
-                .select({ count: sql<number>`count(*)` })
-                .from(transactions)
-                .where(where);
-            setTotal(countResult?.count ?? 0);
+  result.sort((a, b) => b.date.localeCompare(a.date));
 
-            // Get paginated results
-            let query = db
-                .select()
-                .from(transactions)
-                .where(where)
-                .orderBy(desc(transactions.date));
+  const total = result.length;
+  const offset = filters.offset ?? 0;
+  const limit = filters.limit;
+  const paged = limit ? result.slice(offset, offset + limit) : result.slice(offset);
 
-            if (filters.limit) {
-                query = query.limit(filters.limit) as any;
-            }
-            if (filters.offset) {
-                query = query.offset(filters.offset) as any;
-            }
-
-            const results = await query;
-            setData(results);
-        } catch (err) {
-            console.error("Error fetching transactions:", err);
-        } finally {
-            setIsLoading(false);
-        }
-    }, [filters.month, filters.year, filters.category, filters.type, filters.limit, filters.offset]);
-
-    useEffect(() => {
-        refresh();
-    }, [refresh]);
-
-    return { data, total, isLoading, refetch: refresh };
+  return { data: paged, total, isLoading, refetch: () => setTick((t) => t + 1) };
 }
+
+// ─── useAllTransactions ───────────────────────────────────────────────────────
 
 export function useAllTransactions() {
-    const [data, setData] = useState<Transaction[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+  const [tick, setTick] = useState(0);
 
-    const refresh = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            const results = await db
-                .select()
-                .from(transactions)
-                .orderBy(desc(transactions.date));
-            setData(results);
-        } catch (err) {
-            console.error("Error fetching all transactions:", err);
-        } finally {
-            setIsLoading(false);
-        }
-    }, []);
+  useEffect(() => {
+    const fn = () => setTick((t) => t + 1);
+    _listeners.add(fn);
+    return () => { _listeners.delete(fn); };
+  }, []);
 
-    useEffect(() => {
-        refresh();
-    }, [refresh]);
-
-    return { data, isLoading, refetch: refresh };
+  const all = loadAll().slice().sort((a, b) => b.date.localeCompare(a.date));
+  return { data: all, isLoading: false, refetch: () => setTick((t) => t + 1) };
 }
+
+// ─── useCreateTransaction ─────────────────────────────────────────────────────
 
 export function useCreateTransaction() {
-    const [isPending, setIsPending] = useState(false);
+  const [isPending, setIsPending] = useState(false);
 
-    const mutateAsync = useCallback(async (data: {
-        type: "income" | "expense";
-        amount: number;
-        description: string;
-        category: string;
-        note?: string;
-        date: string;
-    }) => {
-        setIsPending(true);
-        try {
-            const [created] = await db
-                .insert(transactions)
-                .values({
-                    type: data.type,
-                    amount: data.amount,
-                    description: data.description,
-                    category: data.category,
-                    note: data.note ?? null,
-                    date: data.date,
-                    createdAt: new Date().toISOString(),
-                })
-                .returning();
-            return created;
-        } finally {
-            setIsPending(false);
-        }
-    }, []);
+  const mutateAsync = useCallback(async (data: {
+    type: "income" | "expense";
+    amount: number;
+    description: string;
+    category: string;
+    note?: string;
+    date: string;
+  }) => {
+    setIsPending(true);
+    try {
+      const all = loadAll();
+      const newTx: Transaction = {
+        id: getNextId(all),
+        type: data.type,
+        amount: data.amount,
+        description: data.description,
+        category: data.category,
+        note: data.note ?? null,
+        date: data.date,
+        createdAt: new Date().toISOString(),
+      };
+      saveAll([...all, newTx]);
+      notifyAll();
+      return newTx;
+    } finally {
+      setIsPending(false);
+    }
+  }, []);
 
-    return { mutateAsync, isPending };
+  return { mutateAsync, isPending };
 }
+
+// ─── useDeleteTransaction ─────────────────────────────────────────────────────
 
 export function useDeleteTransaction() {
-    const mutateAsync = useCallback(async (id: number) => {
-        await db.delete(transactions).where(eq(transactions.id, id));
-    }, []);
+  const mutateAsync = useCallback(async (id: number) => {
+    const all = loadAll().filter((t) => t.id !== id);
+    saveAll(all);
+    notifyAll();
+  }, []);
 
-    return { mutateAsync };
+  return { mutateAsync };
 }
 
-// ─── Financial Summary ───────────────────────────────────────────────────────
+// ─── useSummary ───────────────────────────────────────────────────────────────
 
 interface SummaryData {
-    balance: number;
-    totalIncome: number;
-    totalExpenses: number;
-    month: number;
-    year: number;
+  balance: number;
+  totalIncome: number;
+  totalExpenses: number;
+  month: number;
+  year: number;
 }
 
 export function useSummary(filters: { month?: number; year?: number } = {}) {
-    const [data, setData] = useState<SummaryData | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
+  const [tick, setTick] = useState(0);
 
-    const now = new Date();
-    const month = filters.month ?? now.getMonth() + 1;
-    const year = filters.year ?? now.getFullYear();
+  useEffect(() => {
+    const fn = () => setTick((t) => t + 1);
+    _listeners.add(fn);
+    return () => { _listeners.delete(fn); };
+  }, []);
 
-    const refresh = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            const { start, end } = getMonthRange(month, year);
+  const now = new Date();
+  const month = filters.month ?? now.getMonth() + 1;
+  const year = filters.year ?? now.getFullYear();
+  const { start, end } = getMonthRange(month, year);
 
-            const result = await db
-                .select({
-                    totalIncome: sql<number>`COALESCE(SUM(CASE WHEN ${transactions.type} = 'income' THEN ${transactions.amount} ELSE 0 END), 0)`,
-                    totalExpenses: sql<number>`COALESCE(SUM(CASE WHEN ${transactions.type} = 'expense' THEN ${transactions.amount} ELSE 0 END), 0)`,
-                })
-                .from(transactions)
-                .where(and(gte(transactions.date, start), lt(transactions.date, end)));
+  const all = loadAll().filter((t) => t.date >= start && t.date < end);
+  const totalIncome = all.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0);
+  const totalExpenses = all.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0);
 
-            const totalIncome = Number(result[0]?.totalIncome ?? 0);
-            const totalExpenses = Number(result[0]?.totalExpenses ?? 0);
+  const data: SummaryData = { balance: totalIncome - totalExpenses, totalIncome, totalExpenses, month, year };
 
-            setData({
-                balance: totalIncome - totalExpenses,
-                totalIncome,
-                totalExpenses,
-                month,
-                year,
-            });
-        } catch (err) {
-            console.error("Error fetching summary:", err);
-        } finally {
-            setIsLoading(false);
-        }
-    }, [month, year]);
-
-    useEffect(() => {
-        refresh();
-    }, [refresh]);
-
-    return { data, isLoading, refetch: refresh };
+  return { data, isLoading: false, refetch: () => setTick((t) => t + 1) };
 }
 
-// ─── Category Stats ──────────────────────────────────────────────────────────
+// ─── useCategoryStats ─────────────────────────────────────────────────────────
 
 interface CategoryStat {
-    category: string;
-    total: number;
-    count: number;
-    percentage: number;
+  category: string;
+  total: number;
+  count: number;
+  percentage: number;
 }
 
 export function useCategoryStats(filters: { month?: number; year?: number } = {}) {
-    const [data, setData] = useState<CategoryStat[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+  const [tick, setTick] = useState(0);
 
-    const now = new Date();
-    const month = filters.month ?? now.getMonth() + 1;
-    const year = filters.year ?? now.getFullYear();
+  useEffect(() => {
+    const fn = () => setTick((t) => t + 1);
+    _listeners.add(fn);
+    return () => { _listeners.delete(fn); };
+  }, []);
 
-    const refresh = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            const { start, end } = getMonthRange(month, year);
+  const now = new Date();
+  const month = filters.month ?? now.getMonth() + 1;
+  const year = filters.year ?? now.getFullYear();
+  const { start, end } = getMonthRange(month, year);
 
-            const result = await db
-                .select({
-                    category: transactions.category,
-                    total: sql<number>`COALESCE(SUM(${transactions.amount}), 0)`,
-                    count: sql<number>`COUNT(*)`,
-                })
-                .from(transactions)
-                .where(
-                    and(
-                        eq(transactions.type, "expense"),
-                        gte(transactions.date, start),
-                        lt(transactions.date, end)
-                    )
-                )
-                .groupBy(transactions.category)
-                .orderBy(sql`SUM(${transactions.amount}) DESC`);
+  const expenses = loadAll().filter(
+    (t) => t.type === "expense" && t.date >= start && t.date < end
+  );
 
-            const grandTotal = result.reduce((sum, r) => sum + Number(r.total), 0);
+  const map = new Map<string, { total: number; count: number }>();
+  for (const t of expenses) {
+    const existing = map.get(t.category) ?? { total: 0, count: 0 };
+    map.set(t.category, { total: existing.total + t.amount, count: existing.count + 1 });
+  }
 
-            setData(
-                result.map((r) => ({
-                    category: r.category,
-                    total: Math.round(Number(r.total) * 100) / 100,
-                    count: Number(r.count),
-                    percentage: grandTotal > 0 ? Math.round((Number(r.total) / grandTotal) * 10000) / 100 : 0,
-                }))
-            );
-        } catch (err) {
-            console.error("Error fetching category stats:", err);
-        } finally {
-            setIsLoading(false);
-        }
-    }, [month, year]);
+  const grandTotal = expenses.reduce((s, t) => s + t.amount, 0);
+  const data: CategoryStat[] = Array.from(map.entries())
+    .sort((a, b) => b[1].total - a[1].total)
+    .map(([category, { total, count }]) => ({
+      category,
+      total: Math.round(total * 100) / 100,
+      count,
+      percentage: grandTotal > 0 ? Math.round((total / grandTotal) * 10000) / 100 : 0,
+    }));
 
-    useEffect(() => {
-        refresh();
-    }, [refresh]);
-
-    return { data, isLoading, refetch: refresh };
+  return { data, isLoading: false, refetch: () => setTick((t) => t + 1) };
 }
 
-// ─── Monthly Stats ───────────────────────────────────────────────────────────
+// ─── useMonthlyStats ──────────────────────────────────────────────────────────
 
 interface MonthlyStat {
-    month: number;
-    year: number;
-    income: number;
-    expenses: number;
-    label: string;
+  month: number;
+  year: number;
+  income: number;
+  expenses: number;
+  label: string;
 }
 
 export function useMonthlyStats(filters: { year?: number } = {}) {
-    const [data, setData] = useState<MonthlyStat[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+  const [tick, setTick] = useState(0);
 
-    const year = filters.year ?? new Date().getFullYear();
+  useEffect(() => {
+    const fn = () => setTick((t) => t + 1);
+    _listeners.add(fn);
+    return () => { _listeners.delete(fn); };
+  }, []);
 
-    const refresh = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            const yearStart = new Date(year, 0, 1).toISOString();
-            const yearEnd = new Date(year + 1, 0, 1).toISOString();
+  const year = filters.year ?? new Date().getFullYear();
+  const yearStart = new Date(year, 0, 1).toISOString();
+  const yearEnd = new Date(year + 1, 0, 1).toISOString();
 
-            // Single aggregation query for all 12 months!
-            const result = await db
-                .select({
-                    month: sql<number>`CAST(strftime('%m', ${transactions.date}) AS INTEGER)`,
-                    income: sql<number>`COALESCE(SUM(CASE WHEN ${transactions.type} = 'income' THEN ${transactions.amount} ELSE 0 END), 0)`,
-                    expenses: sql<number>`COALESCE(SUM(CASE WHEN ${transactions.type} = 'expense' THEN ${transactions.amount} ELSE 0 END), 0)`,
-                })
-                .from(transactions)
-                .where(and(gte(transactions.date, yearStart), lt(transactions.date, yearEnd)))
-                .groupBy(sql`strftime('%m', ${transactions.date})`);
+  const yearTxs = loadAll().filter((t) => t.date >= yearStart && t.date < yearEnd);
 
-            // Fill in all 12 months (months with no data get zeros)
-            const monthMap = new Map(result.map((r) => [Number(r.month), r]));
+  const data: MonthlyStat[] = Array.from({ length: 12 }, (_, i) => {
+    const m = i + 1;
+    const { start, end } = getMonthRange(m, year);
+    const mTxs = yearTxs.filter((t) => t.date >= start && t.date < end);
+    return {
+      month: m,
+      year,
+      income: mTxs.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0),
+      expenses: mTxs.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0),
+      label: MONTH_SHORT[i],
+    };
+  });
 
-            const months: MonthlyStat[] = [];
-            for (let m = 1; m <= 12; m++) {
-                const row = monthMap.get(m);
-                months.push({
-                    month: m,
-                    year,
-                    income: Number(row?.income ?? 0),
-                    expenses: Number(row?.expenses ?? 0),
-                    label: MONTH_SHORT[m - 1],
-                });
-            }
-
-            setData(months);
-        } catch (err) {
-            console.error("Error fetching monthly stats:", err);
-        } finally {
-            setIsLoading(false);
-        }
-    }, [year]);
-
-    useEffect(() => {
-        refresh();
-    }, [refresh]);
-
-    return { data, isLoading, refetch: refresh };
+  return { data, isLoading: false, refetch: () => setTick((t) => t + 1) };
 }
