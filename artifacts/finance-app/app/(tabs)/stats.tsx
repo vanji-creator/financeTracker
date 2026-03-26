@@ -7,41 +7,38 @@ import {
   Platform,
   ActivityIndicator,
   RefreshControl,
-  Pressable
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColorScheme } from "react-native";
-import { Feather } from "@expo/vector-icons";
 
 import Colors from "@/constants/colors";
 import DonutChart from "@/components/DonutChart";
 import BarChart from "@/components/BarChart";
 import {
-  useGetCategoryStats,
-  useGetMonthlyStats,
-} from "@workspace/api-client-react";
+  useCategoryStats,
+  useMonthlyStats,
+} from "@/hooks/useDatabase";
 
 export default function StatsScreen() {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme() ?? "light";
   const colors = Colors[colorScheme];
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<"expense" | "income">("expense");
 
   const currentYear = new Date().getFullYear();
-  const currentMonth = new Date().getMonth() + 1; // 1-12
+  const currentMonth = new Date().getMonth() + 1;
 
-  const { 
-    data: categoryStats, 
+  const {
+    data: categoryStats,
     refetch: refetchCategories,
-    isLoading: categoriesLoading 
-  } = useGetCategoryStats({ month: currentMonth, year: currentYear });
-  
-  const { 
-    data: monthlyStats, 
+    isLoading: categoriesLoading
+  } = useCategoryStats({ month: currentMonth, year: currentYear });
+
+  const {
+    data: monthlyStats,
     refetch: refetchMonthly,
-    isLoading: monthlyLoading 
-  } = useGetMonthlyStats({ year: currentYear });
+    isLoading: monthlyLoading
+  } = useMonthlyStats({ year: currentYear });
 
   const onRefresh = React.useCallback(async () => {
     setRefreshing(true);
@@ -127,83 +124,25 @@ export default function StatsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  contentContainer: {
-    paddingHorizontal: 20,
-  },
-  skeletonContainer: {
-    padding: 60,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  header: {
-    marginBottom: 24,
-  },
-  title: {
-    fontSize: 28,
-    fontFamily: 'Inter_700Bold',
-  },
-  card: {
-    borderRadius: 24,
-    borderWidth: 1,
-    padding: 20,
-    marginBottom: 20,
-  },
-  cardHeader: {
-    marginBottom: 20,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontFamily: 'Inter_600SemiBold',
-    marginBottom: 4,
-  },
-  cardSubtitle: {
-    fontSize: 14,
-    fontFamily: 'Inter_400Regular',
-  },
-  chartContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginVertical: 10,
-  },
-  legendContainer: {
-    marginTop: 20,
-  },
+  container: { flex: 1 },
+  contentContainer: { paddingHorizontal: 20 },
+  skeletonContainer: { padding: 60, alignItems: 'center', justifyContent: 'center' },
+  header: { marginBottom: 24 },
+  title: { fontSize: 28, fontFamily: 'Inter_700Bold' },
+  card: { borderRadius: 24, borderWidth: 1, padding: 20, marginBottom: 20 },
+  cardHeader: { marginBottom: 20 },
+  cardTitle: { fontSize: 18, fontFamily: 'Inter_600SemiBold', marginBottom: 4 },
+  cardSubtitle: { fontSize: 14, fontFamily: 'Inter_400Regular' },
+  chartContainer: { alignItems: 'center', justifyContent: 'center', marginVertical: 10 },
+  legendContainer: { marginTop: 20 },
   legendItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(150,150,150,0.2)',
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(150,150,150,0.2)',
   },
-  legendLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  legendDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginRight: 8,
-  },
-  legendLabel: {
-    fontSize: 14,
-    fontFamily: 'Inter_500Medium',
-  },
-  legendValue: {
-    fontSize: 14,
-    fontFamily: 'Inter_600SemiBold',
-  },
-  tabContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  legendRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  }
+  legendLeft: { flexDirection: 'row', alignItems: 'center' },
+  legendDot: { width: 10, height: 10, borderRadius: 5, marginRight: 8 },
+  legendLabel: { fontSize: 14, fontFamily: 'Inter_500Medium' },
+  legendValue: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
+  tabContainer: { flexDirection: 'row', justifyContent: 'center', marginBottom: 16 },
+  legendRow: { flexDirection: 'row', alignItems: 'center' },
 });

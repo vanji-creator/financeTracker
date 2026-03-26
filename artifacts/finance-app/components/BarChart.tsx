@@ -1,7 +1,14 @@
 import React from 'react';
 import { View, StyleSheet, Text, useColorScheme } from 'react-native';
 import Svg, { Rect, G, Text as SvgText, Line } from 'react-native-svg';
-import { MonthlyStat } from '@workspace/api-client-react';
+
+interface MonthlyStat {
+  month: number;
+  year: number;
+  income: number;
+  expenses: number;
+  label: string;
+}
 import Colors from '@/constants/colors';
 
 interface BarChartProps {
@@ -71,7 +78,7 @@ export default function BarChart({ data, width = 320, height = 220 }: BarChartPr
         {data.map((item, i) => {
           const incomeHeight = (item.income / maxVal) * chartHeight;
           const expenseHeight = (item.expenses / maxVal) * chartHeight;
-          
+
           const groupX = padding + barSpacing + i * (barWidth * 2 + barSpacing);
           const incomeX = groupX;
           const expenseX = groupX + barWidth;

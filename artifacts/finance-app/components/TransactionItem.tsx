@@ -2,7 +2,7 @@ import React from "react";
 import { View, Text, StyleSheet, Animated } from "react-native";
 import { Swipeable } from "react-native-gesture-handler";
 import { Feather } from "@expo/vector-icons";
-import { Transaction } from "@workspace/api-client-react";
+import { Transaction } from "@/db/schema";
 import Colors from "@/constants/colors";
 import { useColorScheme } from "react-native";
 import * as Haptics from "expo-haptics";

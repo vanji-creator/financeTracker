@@ -1,7 +1,13 @@
 import React from 'react';
 import { View, StyleSheet, Text, useColorScheme } from 'react-native';
 import Svg, { Path, G, Circle } from 'react-native-svg';
-import { CategoryStat } from '@workspace/api-client-react';
+
+interface CategoryStat {
+  category: string;
+  total: number;
+  count: number;
+  percentage: number;
+}
 import Colors from '@/constants/colors';
 
 interface DonutChartProps {
@@ -27,7 +33,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 export default function DonutChart({ data, size = 200, strokeWidth = 30 }: DonutChartProps) {
   const colorScheme = useColorScheme() ?? "light";
   const colors = Colors[colorScheme];
-  
+
   const radius = (size - strokeWidth) / 2;
   const center = size / 2;
   const circumference = 2 * Math.PI * radius;
@@ -67,9 +73,9 @@ export default function DonutChart({ data, size = 200, strokeWidth = 30 }: Donut
             const strokeDasharray = `${circumference} ${circumference}`;
             const strokeDashoffset = circumference - percent * circumference;
             const offset = cumulativePercent * circumference;
-            
+
             cumulativePercent += percent;
-            
+
             const color = CATEGORY_COLORS[item.category] || CATEGORY_COLORS.Other;
 
             return (
@@ -118,5 +124,10 @@ const styles = StyleSheet.create({
   totalAmount: {
     fontFamily: "Inter_700Bold",
     fontSize: 24,
-  }
+  },
+  centerText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 16,
+    textAlign: 'center',
+  },
 });

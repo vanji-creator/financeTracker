@@ -19,23 +19,23 @@ import { router } from "expo-router";
 import Colors from "@/constants/colors";
 import TransactionItem from "@/components/TransactionItem";
 import {
-  useGetSummary,
-  useGetTransactions,
+  useSummary,
+  useTransactions,
   useCreateTransaction,
   useDeleteTransaction,
-} from "@workspace/api-client-react";
+} from "@/hooks/useDatabase";
 
 const SEED_FLAG = "@finance_app_seeded_v1";
 
 const SAMPLE_TRANSACTIONS = [
-  { type: "income" as const, amount: 4500, description: "Salary", category: "Salary" as const, date: new Date().toISOString() },
-  { type: "expense" as const, amount: 45.2, description: "Groceries", category: "Food" as const, date: new Date(Date.now() - 86400000).toISOString() },
-  { type: "expense" as const, amount: 120.5, description: "Electric Bill", category: "Housing" as const, date: new Date(Date.now() - 86400000 * 2).toISOString() },
-  { type: "expense" as const, amount: 25.0, description: "Uber", category: "Transportation" as const, date: new Date(Date.now() - 86400000 * 3).toISOString() },
-  { type: "expense" as const, amount: 65.0, description: "Dinner with friends", category: "Food" as const, date: new Date(Date.now() - 86400000 * 4).toISOString() },
-  { type: "expense" as const, amount: 300.0, description: "New Monitor", category: "Shopping" as const, date: new Date(Date.now() - 86400000 * 5).toISOString() },
-  { type: "income" as const, amount: 350, description: "Freelance Client", category: "Freelance" as const, date: new Date(Date.now() - 86400000 * 6).toISOString() },
-  { type: "expense" as const, amount: 15.99, description: "Netflix", category: "Entertainment" as const, date: new Date(Date.now() - 86400000 * 7).toISOString() },
+  { type: "income" as const, amount: 4500, description: "Salary", category: "Salary", date: new Date().toISOString() },
+  { type: "expense" as const, amount: 45.2, description: "Groceries", category: "Food", date: new Date(Date.now() - 86400000).toISOString() },
+  { type: "expense" as const, amount: 120.5, description: "Electric Bill", category: "Housing", date: new Date(Date.now() - 86400000 * 2).toISOString() },
+  { type: "expense" as const, amount: 25.0, description: "Uber", category: "Transportation", date: new Date(Date.now() - 86400000 * 3).toISOString() },
+  { type: "expense" as const, amount: 65.0, description: "Dinner with friends", category: "Food", date: new Date(Date.now() - 86400000 * 4).toISOString() },
+  { type: "expense" as const, amount: 300.0, description: "New Monitor", category: "Shopping", date: new Date(Date.now() - 86400000 * 5).toISOString() },
+  { type: "income" as const, amount: 350, description: "Freelance Client", category: "Freelance", date: new Date(Date.now() - 86400000 * 6).toISOString() },
+  { type: "expense" as const, amount: 15.99, description: "Netflix", category: "Entertainment", date: new Date(Date.now() - 86400000 * 7).toISOString() },
 ];
 
 export default function HomeScreen() {
@@ -45,18 +45,18 @@ export default function HomeScreen() {
   const isDark = colorScheme === "dark";
   const [refreshing, setRefreshing] = useState(false);
 
-  const { data: summary, refetch: refetchSummary, isLoading: summaryLoading } = useGetSummary({});
-  const { data: transactions, refetch: refetchTransactions, isLoading: transactionsLoading } = useGetTransactions({});
+  const { data: summary, refetch: refetchSummary, isLoading: summaryLoading } = useSummary();
+  const { data: transactions, refetch: refetchTransactions, isLoading: transactionsLoading } = useTransactions({ limit: 20 });
   const { mutateAsync: createTx } = useCreateTransaction();
   const { mutateAsync: deleteTx } = useDeleteTransaction();
 
   useEffect(() => {
     async function seedData() {
       const seeded = await AsyncStorage.getItem(SEED_FLAG);
-      if (!seeded && !transactions?.length) {
+      if (!seeded && transactions?.length === 0 && !transactionsLoading) {
         try {
           for (const tx of SAMPLE_TRANSACTIONS) {
-            await createTx({ data: tx });
+            await createTx(tx);
           }
           await AsyncStorage.setItem(SEED_FLAG, "true");
           refetchSummary();
@@ -67,7 +67,7 @@ export default function HomeScreen() {
       }
     }
     seedData();
-  }, [transactions?.length]);
+  }, [transactionsLoading]);
 
   const onRefresh = React.useCallback(async () => {
     setRefreshing(true);
@@ -76,7 +76,7 @@ export default function HomeScreen() {
   }, [refetchSummary, refetchTransactions]);
 
   const handleDelete = async (id: number) => {
-    await deleteTx({ id });
+    await deleteTx(id);
     refetchSummary();
     refetchTransactions();
   };

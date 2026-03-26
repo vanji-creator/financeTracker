@@ -7,7 +7,7 @@ import {
   Platform,
   Pressable,
   TextInput,
-  KeyboardAvoidingView,
+  ActivityIndicator,
   Alert
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -18,10 +18,10 @@ import * as Haptics from "expo-haptics";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 
 import Colors from "@/constants/colors";
-import { useCreateTransaction, CreateTransactionBodyType, CreateTransactionBodyCategory } from "@workspace/api-client-react";
+import { useCreateTransaction } from "@/hooks/useDatabase";
 
 const EXPENSE_CATEGORIES = [
-  "Food", "Shopping", "Transportation", "Housing", 
+  "Food", "Shopping", "Transportation", "Housing",
   "Healthcare", "Entertainment", "Travel", "Other"
 ];
 
@@ -34,7 +34,7 @@ export default function AddScreen() {
   const colorScheme = useColorScheme() ?? "light";
   const colors = Colors[colorScheme];
 
-  const [type, setType] = useState<CreateTransactionBodyType>("expense");
+  const [type, setType] = useState<"income" | "expense">("expense");
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState<string>("Food");
@@ -55,16 +55,14 @@ export default function AddScreen() {
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       await createTx({
-        data: {
-          type,
-          amount: Number(amount),
-          description: description.trim(),
-          category: category as CreateTransactionBodyCategory,
-          note: note.trim() || undefined,
-          date: new Date().toISOString()
-        }
+        type,
+        amount: Number(amount),
+        description: description.trim(),
+        category,
+        note: note.trim() || undefined,
+        date: new Date().toISOString()
       });
-      
+
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       // Reset form
       setAmount("");
@@ -156,7 +154,7 @@ export default function AddScreen() {
               key={cat}
               style={[
                 styles.categoryChip,
-                { 
+                {
                   backgroundColor: category === cat ? colors.accent : colors.card,
                   borderColor: category === cat ? colors.accent : colors.border
                 }

@@ -7,7 +7,6 @@ import {
   Pressable,
   TextInput,
   ActivityIndicator,
-  ScrollView,
   Animated,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -17,7 +16,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 
 import Colors from "@/constants/colors";
-import { useGetTransactions } from "@workspace/api-client-react";
+import { useAllTransactions } from "@/hooks/useDatabase";
 import { queryFinances, type AIResponse, type Insight } from "@/utils/localFinanceAI";
 
 const SUGGESTIONS = [
@@ -45,9 +44,8 @@ export default function SearchScreen() {
   const [query, setQuery] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [history, setHistory] = useState<QueryHistoryItem[]>([]);
-  const fadeAnim = useRef(new Animated.Value(1)).current;
 
-  const { data: transactions } = useGetTransactions({});
+  const { data: transactions } = useAllTransactions();
 
   const handleSend = async (overrideQuery?: string) => {
     const q = (overrideQuery ?? query).trim();
@@ -62,7 +60,7 @@ export default function SearchScreen() {
     const txData = (transactions ?? []).map((tx) => ({
       id: tx.id,
       type: tx.type as "income" | "expense",
-      amount: typeof tx.amount === "string" ? parseFloat(tx.amount) : tx.amount,
+      amount: tx.amount,
       description: tx.description,
       category: tx.category,
       note: tx.note,
@@ -293,131 +291,45 @@ const styles = StyleSheet.create({
   contentContainer: { paddingHorizontal: 20 },
   header: { marginBottom: 24 },
   headerBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "flex-start",
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    marginBottom: 10,
-    gap: 5,
+    flexDirection: "row", alignItems: "center", alignSelf: "flex-start",
+    borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5, marginBottom: 10, gap: 5,
   },
-  headerBadgeText: {
-    fontSize: 12,
-    fontFamily: "Inter_600SemiBold",
-    letterSpacing: 0.3,
-  },
+  headerBadgeText: { fontSize: 12, fontFamily: "Inter_600SemiBold", letterSpacing: 0.3 },
   title: { fontSize: 28, fontFamily: "Inter_700Bold", marginBottom: 6 },
   subtitle: { fontSize: 14, fontFamily: "Inter_400Regular", lineHeight: 20 },
   inputRow: { flexDirection: "row", alignItems: "center", marginBottom: 28, gap: 10 },
   inputWrapper: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    height: 52,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
+    flex: 1, flexDirection: "row", alignItems: "center", borderWidth: 1, borderRadius: 16,
+    paddingHorizontal: 14, height: 52, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2,
   },
   inputIcon: { marginRight: 10 },
   input: { flex: 1, fontSize: 15, height: "100%" },
   clearBtn: { padding: 4 },
-  sendBtn: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  sendBtn: { width: 52, height: 52, borderRadius: 16, alignItems: "center", justifyContent: "center" },
   suggestionsSection: { marginBottom: 8 },
-  sectionLabel: {
-    fontSize: 13,
-    fontFamily: "Inter_500Medium",
-    marginBottom: 14,
-    letterSpacing: 0.3,
-    textTransform: "uppercase",
-  },
+  sectionLabel: { fontSize: 13, fontFamily: "Inter_500Medium", marginBottom: 14, letterSpacing: 0.3, textTransform: "uppercase" },
   suggestionsGrid: { gap: 10 },
-  suggestionCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 14,
-    gap: 12,
-  },
-  suggestionIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  suggestionCard: { flexDirection: "row", alignItems: "center", borderWidth: 1, borderRadius: 14, padding: 14, gap: 12 },
+  suggestionIconWrap: { width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center" },
   suggestionText: { flex: 1, fontSize: 14, fontFamily: "Inter_500Medium", lineHeight: 20 },
   processingCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderRadius: 16,
-    padding: 16,
-    gap: 12,
-    overflow: "hidden",
-    marginBottom: 16,
+    flexDirection: "row", alignItems: "center", borderWidth: 1, borderRadius: 16, padding: 16, gap: 12, overflow: "hidden", marginBottom: 16,
   },
   processingText: { fontSize: 14, fontFamily: "Inter_500Medium" },
   historyItem: { marginBottom: 20 },
   questionRow: { flexDirection: "row", justifyContent: "flex-end", marginBottom: 10 },
-  questionBubble: {
-    maxWidth: "80%",
-    borderRadius: 20,
-    borderBottomRightRadius: 4,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
+  questionBubble: { maxWidth: "80%", borderRadius: 20, borderBottomRightRadius: 4, paddingHorizontal: 16, paddingVertical: 12 },
   questionText: { color: "#FFF", fontSize: 14, fontFamily: "Inter_500Medium", lineHeight: 20 },
-  responseCard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    borderTopLeftRadius: 4,
-    padding: 18,
-  },
+  responseCard: { borderRadius: 20, borderWidth: 1, borderTopLeftRadius: 4, padding: 18 },
   responseHeader: { flexDirection: "row", alignItems: "center", marginBottom: 12, gap: 8 },
-  aiIconBg: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  aiIconBg: { width: 28, height: 28, borderRadius: 8, alignItems: "center", justifyContent: "center" },
   responseFrom: { fontSize: 12, fontFamily: "Inter_500Medium" },
   responseText: { fontSize: 14, fontFamily: "Inter_400Regular", lineHeight: 22, marginBottom: 14 },
-  insightsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  insightChip: {
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    minWidth: "46%",
-    flex: 1,
-  },
+  insightsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  insightChip: { borderRadius: 12, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 10, minWidth: "46%", flex: 1 },
   insightTop: { flexDirection: "row", alignItems: "center", marginBottom: 4 },
   insightValue: { fontSize: 15, fontFamily: "Inter_700Bold", marginBottom: 2 },
   insightLabel: { fontSize: 11, fontFamily: "Inter_400Regular", lineHeight: 15 },
-  clearHistory: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 12,
-    marginTop: 4,
-  },
+  clearHistory: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 12, marginTop: 4 },
   clearHistoryText: { fontSize: 13, fontFamily: "Inter_500Medium" },
 });
